@@ -33,15 +33,14 @@ const Login = () => {
     if (!response.data?.token || !response.data?.user) {
       throw new Error('Invalid login response');
     }
-
+ localStorage.setItem('token', response.data.token);
+    localStorage.setItem('user', JSON.stringify(response.data.user));
     // Store token and redirect immediately
     await auth.login(response.data.token, response.data.user);
     
     // Force navigation - add timeout if needed
-    setTimeout(() => {
-      navigate('/dashboard', { replace: true });
-    }, 100);
-    
+        navigate('/dashboard', { replace: true });
+
   } catch (err) {
     console.error('Login error:', err);
     setError(err.response?.data?.message || 'Invalid email or password');

@@ -58,6 +58,22 @@ class CategorizationService {
     if (!expense || !expense.description) return { categoryName: null, categoryId: null };
 
     const text = expense.description.toLowerCase();
+    const keywordRules = [
+    { re: /(tesco|asda|aldi|lidl|sainsbury)/i, name: 'Groceries' },
+    { re: /(uber|bolt|taxi|train|bus|tfl|metro)/i, name: 'Transport' },
+    { re: /(starbucks|costa|cafe|coffee|restaurant|mcdonald|kfc|burger)/i, name: 'Food' },
+    { re: /(shell|bp|esso|petrol|diesel|fuel)/i, name: 'Fuel' },
+  ];
+
+  for (const r of keywordRules) {
+    if (r.re.test(text)) {
+      const cat = await Category.findByName(r.name);
+      if (cat) {
+        await Expense.updateCategory(expenseId, userId, cat.categoryId);
+        return { categoryName: cat.categoryName, categoryId: cat.categoryId };
+      }
+    }
+  }
     // If nothing trained, fallback
     if (!this.classifier || !this.classifier.docs || this.classifier.docs.length === 0) {
       return { categoryName: null, categoryId: null };

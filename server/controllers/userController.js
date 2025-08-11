@@ -97,6 +97,26 @@ exports.loginUser = async (req, res) => {
       });
     }
 
+  const accessToken = jwt.sign(
+    { userId: user.id },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
+  );
+
+  const refreshToken = jwt.sign(
+    { userId: user.id },
+    process.env.JWT_REFRESH_SECRET,
+    { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' }
+  );
+
+  // send refresh token in httpOnly cookie
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: false, // true in prod with HTTPS
+    maxAge: 7 * 24 * 60 * 60 * 1000
+  });
+
     // Generate token
     const token = jwt.sign(
       { userId: user.id, email: user.email },
@@ -107,7 +127,7 @@ exports.loginUser = async (req, res) => {
     // Return essential user data (without password)
     res.json({
       success: true,
-      token,
+      token:accessToken,
       user: {
         id: user.id,
         name: user.name,

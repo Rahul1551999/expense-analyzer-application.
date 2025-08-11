@@ -6,6 +6,8 @@ import {
 import { CloudUpload, CheckCircle } from '@mui/icons-material';
 import api from '../../services/api';
 
+
+
 const ReceiptUpload = () => {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -62,7 +64,7 @@ const handleSubmit = async () => {
     // 2) OCR process
     const proc = await api.post(`/receipts/${receiptId}/process`);
     const parsed = proc.data?.extractedData || {};
-
+const newExpenseId = proc.data?.expenseId;
     // 3) prefill
     setExpenseData(prev => ({ 
       ...prev,
@@ -87,15 +89,19 @@ const toISO = (d) => {
 
 const saveExpense = async () => {
   try {
-    await api.post('/expenses', {
+       const res = await api.post('/expenses', {
       amount: Number(expenseData.amount) || null,
-      date: toISO(expenseData.date),              
+      date: toISO(expenseData.date),
       merchant: expenseData.merchant || null,
-      description: '', // or capture a notes field if you add one
+      // Send something meaningful for NLP
+      description: expenseData.merchant || 'receipt',
       categoryId: expenseData.categoryId || null,
       receiptId: lastReceiptId || null
     });
-    
+    if (res.data?.autoCategory?.categoryName) {
+      alert(`Auto-categorized as: ${res.data.autoCategory.categoryName}`);
+    }
+
     // reset UI
     setFiles([]);
     setLastReceiptId(null);
@@ -106,6 +112,7 @@ const saveExpense = async () => {
       categoryId: ''
     });
     setUploadComplete(false);
+
     
   } catch (e) {
     console.error('Save expense error:', e);

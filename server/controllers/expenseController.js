@@ -74,9 +74,15 @@ exports.createExpense = async (req, res) => {
 
     // Auto-categorize if no category was provided and we have description
     if (!catId && desc) {
-      await categorizer.categorizeExpense(expenseId, userId);
-    }
+      const { categoryName, categoryId: newCatId } =
+        await categorizationService.categorizeExpense(expenseId, userId);
 
+      return res.status(201).json({
+        success: true,
+        expenseId,
+        autoCategory: { categoryId: newCatId, categoryName }
+      });
+    }
     res.status(201).json({ success: true, expenseId });
   } catch (e) {
     console.error('Create expense error:', e);

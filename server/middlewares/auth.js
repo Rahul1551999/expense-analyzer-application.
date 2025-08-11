@@ -1,44 +1,19 @@
+// server/middlewares/auth.js
 const jwt = require('jsonwebtoken');
-const pool = require('../config/db');
 
-module.exports = async (req, res, next) => {
+module.exports = (req, res, next) => {
+  const auth = req.headers.authorization || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+
+  if (!token) return res.status(401).json({ ok:false, code:'NO_TOKEN' });
+
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
-    
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'No token provided'
-      });
-    }
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
-  // Get complete user data
-    const [users] = await pool.query(
-      'SELECT id, name, email FROM users WHERE id = ?', // Include needed fields
-      [decoded.userId]
-    );
-
-    if (users.length === 0) {
-      return res.status(401).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    req.user = decoded;
+    req.user = jwt.verify(token, process.env.JWT_SECRET);
     next();
   } catch (err) {
-      console.error('Auth error:', err);
-    
-    const message = err.name === 'JsonWebTokenError' 
-      ? 'Invalid token' 
-      : 'Not authorized';
-      
-    res.status(401).json({
-      success: false,
-      message
-    });
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ ok:false, code:'TOKEN_EXPIRED' });
+    }
+    return res.status(401).json({ ok:false, code:'TOKEN_INVALID' });
   }
 };

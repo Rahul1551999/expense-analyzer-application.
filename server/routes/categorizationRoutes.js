@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middlewares/auth');
-const { retrain } = require('../controllers/categorizationController');
+const { getCategories } = require('../controllers/categoryController');
 
-router.post('/retrain', auth, retrain);
+router.get('/', auth, getCategories);
 
 module.exports = router;
