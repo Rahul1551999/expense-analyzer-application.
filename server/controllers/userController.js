@@ -66,12 +66,17 @@ exports.registerUser = async (req, res) => {
     });
   }
 };
-
-// Login User
-// In userController.js
 exports.loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
+
+    // Validate inputs
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
+      });
+    }
 
     // Check if user exists
     const [users] = await pool.query(
@@ -87,7 +92,7 @@ exports.loginUser = async (req, res) => {
     }
 
     const user = users[0];
-    
+
     // Verify password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
@@ -97,37 +102,17 @@ exports.loginUser = async (req, res) => {
       });
     }
 
-  const accessToken = jwt.sign(
-    { userId: user.id },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
-  );
-
-  const refreshToken = jwt.sign(
-    { userId: user.id },
-    process.env.JWT_REFRESH_SECRET,
-    { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' }
-  );
-
-  // send refresh token in httpOnly cookie
-  res.cookie('refreshToken', refreshToken, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: false, // true in prod with HTTPS
-    maxAge: 7 * 24 * 60 * 60 * 1000
-  });
-
-    // Generate token
+    // Generate access token only
     const token = jwt.sign(
       { userId: user.id, email: user.email },
       process.env.JWT_SECRET,
-      { expiresIn: '1h' }
+      { expiresIn: process.env.JWT_EXPIRES_IN || '1h' }
     );
 
-    // Return essential user data (without password)
+    // Return response
     res.json({
       success: true,
-      token:accessToken,
+      token,
       user: {
         id: user.id,
         name: user.name,
@@ -136,12 +121,15 @@ exports.loginUser = async (req, res) => {
     });
 
   } catch (err) {
+    console.error("Login error:", err);
     res.status(500).json({
       success: false,
-      message: 'Login failed'
+      message: 'Login failed',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }
 };
+
 exports.getProfile = (req, res) => {
   try {
     // Ensure middleware attached user data

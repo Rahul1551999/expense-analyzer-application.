@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const cookieParser = require('cookie-parser'); 
+// const cookieParser = require('cookie-parser'); 
 // Verify required environment variables
 const requiredEnv = ['PORT', 'DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'JWT_SECRET'];
 const missingEnv = requiredEnv.filter(key => !process.env[key]);
@@ -23,7 +23,7 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.use(cookieParser());    
+// app.use(cookieParser());    
 // Routes
 app.use('/api/user', require('./routes/userRoutes'));
 app.use('/api/expenses', require('./routes/expenseRoutes'));
