@@ -3,7 +3,10 @@ import axios from 'axios';
 const api = axios.create({
   baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
   withCredentials: true,
-  timeout: 10000,
+timeout: 90000,
+  // Allow larger uploads if needed
+  maxContentLength: Infinity,
+  maxBodyLength: Infinity,
 });
 
 api.interceptors.request.use((config) => {

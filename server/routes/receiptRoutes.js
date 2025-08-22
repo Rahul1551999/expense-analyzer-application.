@@ -1,9 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const { upload, uploadReceipt, processReceipt } = require('../controllers/receiptController');
 const auth = require('../middlewares/auth');
+const receipt = require('../controllers/receiptController');
 
-router.post('/', auth, upload.single('receipt'), uploadReceipt);
-router.post('/:id/process', auth, processReceipt);
+// form-data key is "receipt" in your React code
+router.post('/', auth, receipt.upload.single('receipt'), receipt.uploadReceipt);
+router.post('/:id/process', auth, receipt.processReceipt);
+router.delete('/:id', auth, receipt.deleteReceipt);
 
 module.exports = router;

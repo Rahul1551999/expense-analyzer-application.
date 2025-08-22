@@ -1,47 +1,41 @@
+// server/services/categorizationService.js
 const natural = require('natural');
 const Expense = require('../models/expense');
 const Category = require('../models/Category');
 
 /**
- * A per-process singleton that keeps one Bayes classifier in memory.
- * It trains lazily from the user's labeled expenses. If there is no training data,
- * it will classify as "Uncategorized" (or null) and not crash.
+ * Per-user classifiers. The previous code replaced a global classifier each time
+ * a different user trained, causing cross-user bleed. This fixes it.
  */
 class CategorizationService {
   constructor() {
-    this.classifier = new natural.BayesClassifier();
-    this.isTrainedForUser = new Map(); // userId -> boolean
-    this.trainingPromises = new Map(); // userId -> Promise
+    this.classifiers = new Map();       // userId -> BayesClassifier
+    this.trainingPromises = new Map();  // userId -> Promise
   }
 
   async ensureTrained(userId) {
-    if (this.isTrainedForUser.get(userId)) return;
+    if (this.classifiers.has(userId)) return this.classifiers.get(userId);
 
-    // Deduplicate concurrent training
     if (this.trainingPromises.has(userId)) {
-      return this.trainingPromises.get(userId);
+      await this.trainingPromises.get(userId);
+      return this.classifiers.get(userId);
     }
+
     const p = (async () => {
       const data = await Expense.trainingData(userId);
-      // If no labeled data, leave the classifier essentially empty for this user
-      if (!data || data.length === 0) {
-        this.isTrainedForUser.set(userId, true);
-        return;
-      }
-      // Reset a fresh classifier per user
       const clf = new natural.BayesClassifier();
-      for (const item of data) {
-        // Guard: both text and category required
-        if (item.text && item.category) {
-          clf.addDocument(item.text.toLowerCase(), item.category);
+
+      if (Array.isArray(data) && data.length) {
+        for (const item of data) {
+          if (item.text && item.category) {
+            clf.addDocument(item.text.toLowerCase(), item.category);
+          }
+        }
+        if (clf.docs && clf.docs.length) {
+          clf.train();
         }
       }
-      if (clf.docs && clf.docs.length > 0) {
-        clf.train();
-        // Swap in the trained classifier
-        this.classifier = clf;
-      }
-      this.isTrainedForUser.set(userId, true);
+      this.classifiers.set(userId, clf);
     })();
 
     this.trainingPromises.set(userId, p);
@@ -50,43 +44,60 @@ class CategorizationService {
     } finally {
       this.trainingPromises.delete(userId);
     }
+    return this.classifiers.get(userId);
+  }
+
+  /** quick keyword hooks that usually outperform a model on receipts */
+  async keywordCategory(text) {
+    const keywordRules = [
+      { re: /(tesco|asda|aldi|lidl|sainsbury)/i, name: 'Groceries' },
+      { re: /(uber|bolt|taxi|train|bus|tfl|metro|rail)/i, name: 'Transport' },
+      { re: /(starbucks|costa|café|cafe|coffee|restaurant|mcdonald|kfc|burger|pizza|domino)/i, name: 'Food' },
+      { re: /(shell|bp|esso|petrol|diesel|fuel)/i, name: 'Fuel' },
+      { re: /(boots|pharmacy|chemist)/i, name: 'Health' },
+      { re: /(amazon|argos|currys|ikea)/i, name: 'Shopping' },
+    ];
+
+    for (const r of keywordRules) {
+      if (r.re.test(text)) {
+        const cat = await Category.findByName(r.name);
+        if (cat) return cat;
+      }
+    }
+    return null;
   }
 
   async categorizeExpense(expenseId, userId) {
-    await this.ensureTrained(userId);
-    const expense = await Expense.findById(expenseId, userId);
-    if (!expense || !expense.description) return { categoryName: null, categoryId: null };
+    const exp = await Expense.findById(expenseId, userId);
+    if (!exp) return { categoryName: null, categoryId: null };
 
-    const text = expense.description.toLowerCase();
-    const keywordRules = [
-    { re: /(tesco|asda|aldi|lidl|sainsbury)/i, name: 'Groceries' },
-    { re: /(uber|bolt|taxi|train|bus|tfl|metro)/i, name: 'Transport' },
-    { re: /(starbucks|costa|cafe|coffee|restaurant|mcdonald|kfc|burger)/i, name: 'Food' },
-    { re: /(shell|bp|esso|petrol|diesel|fuel)/i, name: 'Fuel' },
-  ];
+    // Combine multiple signals
+    const text = [
+      exp.description || '',
+      exp.merchant || '',
+    ].join(' ').toLowerCase();
 
-  for (const r of keywordRules) {
-    if (r.re.test(text)) {
-      const cat = await Category.findByName(r.name);
-      if (cat) {
-        await Expense.updateCategory(expenseId, userId, cat.categoryId);
-        return { categoryName: cat.categoryName, categoryId: cat.categoryId };
+    // 1) keyword hooks first (fast and precise for branded receipts)
+    const byKeyword = await this.keywordCategory(text);
+    if (byKeyword) {
+      await Expense.updateCategory(expenseId, userId, byKeyword.categoryId);
+      return { categoryName: byKeyword.categoryName, categoryId: byKeyword.categoryId };
+    }
+
+    // 2) fall back to trained model for the user
+    const clf = await this.ensureTrained(userId);
+    if (clf && clf.docs && clf.docs.length) {
+      const categoryName = clf.classify(text);
+      const cat = await Category.findByName(categoryName);
+      const categoryId = cat ? cat.categoryId : null;
+
+      if (categoryId) {
+        await Expense.updateCategory(expenseId, userId, categoryId);
       }
-    }
-  }
-    // If nothing trained, fallback
-    if (!this.classifier || !this.classifier.docs || this.classifier.docs.length === 0) {
-      return { categoryName: null, categoryId: null };
+      return { categoryName, categoryId };
     }
 
-    const categoryName = this.classifier.classify(text);
-    const cat = await Category.findByName(categoryName);
-    const categoryId = cat ? cat.categoryId : null;
-
-    if (categoryId) {
-      await Expense.updateCategory(expenseId, userId, categoryId);
-    }
-    return { categoryName, categoryId };
+    return { categoryName: null, categoryId: null };
   }
 
   async trainWithFeedback(userId, description, correctCategoryId) {
@@ -96,10 +107,10 @@ class CategorizationService {
     const match = all.find(c => c.categoryId === Number(correctCategoryId));
     if (!match) return;
 
-    // Add new example and retrain
-    this.classifier.addDocument(description.toLowerCase(), match.categoryName);
-    this.classifier.train();
-    this.isTrainedForUser.set(userId, true);
+    const clf = await this.ensureTrained(userId);
+    clf.addDocument(description.toLowerCase(), match.categoryName);
+    clf.train();
+    this.classifiers.set(userId, clf);
   }
 }
 

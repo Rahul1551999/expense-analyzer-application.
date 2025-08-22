@@ -10,6 +10,8 @@ import NotFound from './pages/NotFound';
 import Categories from './pages/Categories';
 import PrivateRoute from './components/PrivateRoute';
 import MainLayout from './components/layouts/MainLayout';
+import Settings from './pages/Settings';
+
 const AppRoutes = () => {
   return (
     <Routes>
@@ -24,6 +26,8 @@ const AppRoutes = () => {
         <Route path="/upload" element={<ReceiptUpload />} />
         <Route path="/categories" element={<Categories />} />
         <Route path="/reports" element={<Reports />} />
+        <Route path="/settings" element={<Settings />} />
+
       </Route>
       
       {/* 404 */}

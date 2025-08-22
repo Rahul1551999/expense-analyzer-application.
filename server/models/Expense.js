@@ -62,7 +62,7 @@ exports.findByUser = async (userId) => {
        receipt_id       AS receiptId
      FROM expenses
      WHERE user_id = ?
-     ORDER BY transaction_date DESC, expense_id DESC`,
+     ORDER BY expense_id DESC`,
     [userId]
   );
   return rows;

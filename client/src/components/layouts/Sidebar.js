@@ -1,13 +1,8 @@
+// client/src/layout/Sidebar.jsx
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  Divider,
-  Toolbar,
-  styled
+  List, ListItemButton, ListItemIcon, ListItemText, Divider, Toolbar, Drawer, Box
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -17,60 +12,61 @@ import {
   CloudUpload as UploadIcon,
 } from '@mui/icons-material';
 
-const StyledNavLink = styled(NavLink)(({ theme }) => ({
-  textDecoration: 'none',
-  color: theme.palette.text.primary,
-  '&.active': {
-    backgroundColor: theme.palette.action.selected,
-    '& .MuiListItemIcon-root': {
-      color: theme.palette.primary.main
-    },
-    '& .MuiListItemText-primary': {
-      fontWeight: 'bold'
-    }
-  },
-  '&:hover': {
-    backgroundColor: theme.palette.action.hover
-  }
-}));
+const drawerWidth = 240;
 
-const Sidebar = () => {
+const menuItems = [
+  { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
+  { text: 'Expenses', icon: <ExpensesIcon />, path: '/expenses' },
+  { text: 'Categories', icon: <CategoriesIcon />, path: '/categories' },
+  { text: 'Reports', icon: <ReportsIcon />, path: '/reports' },
+  { text: 'Upload Receipt', icon: <UploadIcon />, path: '/upload' }
+];
+
+const SidebarContent = ({ location }) => (
+  <Box sx={{ width: drawerWidth }}>
+    <Toolbar />
+    <Divider />
+    <List>
+      {menuItems.map((item) => {
+        const active = location.pathname === item.path;
+        return (
+          <NavLink key={item.text} to={item.path} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <ListItemButton selected={active}>
+              <ListItemIcon sx={{ color: active ? 'primary.main' : 'inherit' }}>{item.icon}</ListItemIcon>
+              <ListItemText primary={item.text} />
+            </ListItemButton>
+          </NavLink>
+        );
+      })}
+    </List>
+  </Box>
+);
+
+const Sidebar = ({ open, onClose }) => {
   const location = useLocation();
 
-  const menuItems = [
-    { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
-    { text: 'Expenses', icon: <ExpensesIcon />, path: '/expenses' },
-    { text: 'Categories', icon: <CategoriesIcon />, path: '/categories' },
-    { text: 'Reports', icon: <ReportsIcon />, path: '/reports' },
-    { text: 'Upload Receipt', icon: <UploadIcon />, path: '/upload' }
-  ];
-
   return (
-    <div style={{ width: '240px', height: '100vh', backgroundColor: '#f5f5f5' }}>
-      <Toolbar />
-      
-      <List>
-        {menuItems.map((item) => (
-          <StyledNavLink
-            key={item.text}
-            to={item.path}
-            style={({ isActive }) => ({
-              display: 'block',
-              backgroundColor: isActive ? 'rgba(25, 118, 210, 0.08)' : 'inherit'
-            })}
-          >
-            <ListItem button>
-              <ListItemIcon>
-                {React.cloneElement(item.icon, {
-                  color: location.pathname === item.path ? 'primary' : 'inherit'
-                })}
-              </ListItemIcon>
-              <ListItemText primary={item.text} />
-            </ListItem>
-          </StyledNavLink>
-        ))}
-      </List>
-    </div>
+    <>
+      {/* Mobile */}
+      <Drawer
+        variant="temporary"
+        open={!!open && typeof onClose === 'function'}
+        onClose={onClose}
+        ModalProps={{ keepMounted: true }}
+        sx={{ display: { xs: 'block', md: 'none' }, '& .MuiDrawer-paper': { width: drawerWidth } }}
+      >
+        <SidebarContent location={location} />
+      </Drawer>
+
+      {/* Desktop */}
+      <Drawer
+        variant="permanent"
+        open
+        sx={{ display: { xs: 'none', md: 'block' }, '& .MuiDrawer-paper': { width: drawerWidth, position: 'relative' } }}
+      >
+        <SidebarContent location={location} />
+      </Drawer>
+    </>
   );
 };
 
