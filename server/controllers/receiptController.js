@@ -36,7 +36,6 @@ exports.uploadReceipt = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to upload receipt' });
   }
 };
-
 exports.processReceipt = async (req, res) => {
   try {
     const { id } = req.params;
@@ -46,10 +45,11 @@ exports.processReceipt = async (req, res) => {
       'SELECT file_path FROM receipts WHERE id = ? AND user_id = ?',
       [id, userId]
     );
-    if (!rows.length) return res.status(404).json({ success: false, message: 'Receipt not found' });
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Receipt not found' });
+    }
 
-    // Resolve absolute path safely
-    const rel = rows[0].file_path; // like /uploads/xxx.png
+    const rel = rows[0].file_path;
     const absPath = path.join(__dirname, '..', rel);
 
     const t0 = Date.now();
@@ -57,65 +57,32 @@ exports.processReceipt = async (req, res) => {
     const extracted = extractExpenseData(text);
     const processingTimeMS = Date.now() - t0;
 
-    // Save extracted info in receipts table
+    // Save OCR result in the receipts table
     await pool.query(
       'UPDATE receipts SET processed = TRUE, extracted_data = ? WHERE id = ? AND user_id = ?',
       [JSON.stringify({ ...extracted, rawTextLength: text.length, processingTimeMS }), id, userId]
     );
 
-    // Create expense
-    let expenseId = null;
-
-    // quick keyword-based initial category
-    let initialCategoryId = null;
-    const kwCat = await (async () => {
-      const cat = await (async () => {
-        const keywordRules = [
-          { re: /(tesco|asda|aldi|lidl|sainsbury)/i, name: 'Groceries' },
-          { re: /(uber|bolt|taxi|train|bus|tfl|metro)/i, name: 'Transport' },
-          { re: /(starbucks|costa|cafe|café|coffee|restaurant|mcdonald|kfc|burger|pizza)/i, name: 'Food' },
-          { re: /(shell|bp|esso|petrol|diesel|fuel)/i, name: 'Fuel' },
-        ];
-        for (const r of keywordRules) {
-          if (r.re.test(text)) {
-            const c = await Category.findByName(r.name);
-            if (c) return c;
-          }
-        }
-        return null;
-      })();
-      return cat;
-    })();
-
-    if (kwCat) initialCategoryId = kwCat.categoryId;
-
-    try {
-      expenseId = await Expense.create(userId, {
-        amount: extracted.amount ? Number(extracted.amount) : null,
-        transactionDate: extracted.date || null,
-        merchant: extracted.merchant || null,
-        description: (text || extracted.merchant || '').substring(0, 255),
-        categoryId: initialCategoryId,
-        receiptId: id
-      });
-    } catch (dbErr) {
-      console.error('Failed to insert expense:', dbErr);
-    }
-
-    // If no keyword category, try ML
-    if (expenseId && !initialCategoryId) {
-      const { categoryName, categoryId } = await categorizer.categorizeExpense(expenseId, userId);
-      if (categoryId) {
-        initialCategoryId = categoryId;
-        await Expense.updateCategory(expenseId, userId, categoryId);
+    // Suggest category (but don’t save expense yet)
+    let suggestedCategory = null;
+    const keywordRules = [
+      { re: /(tesco|asda|aldi|lidl|sainsbury)/i, name: 'Groceries' },
+      { re: /(uber|bolt|taxi|train|bus|tfl|metro)/i, name: 'Transport' },
+      { re: /(starbucks|costa|cafe|café|coffee|restaurant|mcdonald|kfc|burger|pizza)/i, name: 'Food' },
+      { re: /(shell|bp|esso|petrol|diesel|fuel)/i, name: 'Fuel' },
+    ];
+    for (const r of keywordRules) {
+      if (r.re.test(text)) {
+        const c = await Category.findByName(r.name);
+        if (c) suggestedCategory = { categoryId: c.categoryId, categoryName: c.categoryName };
+        break;
       }
     }
 
     return res.json({
       success: true,
       extractedData: extracted,
-      expenseId,
-      autoCategory: initialCategoryId ? { categoryId: initialCategoryId } : null,
+      suggestedCategory,
       meta: { processingTimeMS }
     });
 
